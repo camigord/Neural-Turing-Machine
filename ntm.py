@@ -4,7 +4,7 @@ from memory import Memory
 import utility
 import os
 
-class DNC:
+class NTM:
 
     def __init__(self, controller_class, input_size, output_size, max_sequence_length,
                  memory_locations = 256, memory_word_size = 64, memory_read_heads = 4, shift_range=1, batch_size = 1):
