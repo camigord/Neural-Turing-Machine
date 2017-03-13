@@ -1,9 +1,10 @@
 import tensorflow as tf
 import numpy as np
+import math
 
 class Memory:
 
-    def __init__(self, memory_locations=128, vector_size=20, read_heads=1, batch_size=1):
+    def __init__(self, memory_locations=128, word_size=20, read_heads=1, batch_size=1):
         """
         constructs a memory matrix with read heads and a write head as described
         in the "Neural Turing Machines" paper
@@ -13,7 +14,7 @@ class Memory:
         ----------
         memory_locations: int
             the number of memory locations
-        vector_size: int
+        word_size: int
             the vector size at each location
         read_heads: int
             the number of read heads that can read simultaneously from the memory
@@ -22,7 +23,7 @@ class Memory:
         """
 
         self.memory_locations = memory_locations
-        self.vector_size = vector_size
+        self.word_size = word_size
         self.read_heads = read_heads
         self.batch_size = batch_size
 
@@ -34,10 +35,10 @@ class Memory:
         """
 
         return (
-            tf.fill([self.batch_size, self.memory_locations, self.vector_size], 1e-6),  # initial memory matrix
+            tf.fill([self.batch_size, self.memory_locations, self.word_size], 1e-6),  # initial memory matrix
             tf.fill([self.batch_size, self.memory_locations, ], 1e-6),  # initial write weighting
             tf.fill([self.batch_size, self.memory_locations, self.read_heads], 1e-6),  # initial read weightings
-            tf.fill([self.batch_size, self.vector_size, self.read_heads], 1e-6),  # initial read vectors
+            tf.fill([self.batch_size, self.word_size, self.read_heads], 1e-6),  # initial read vectors
         )
 
     def get_content_adressing(self, memory_matrix, keys, strengths):
@@ -46,9 +47,9 @@ class Memory:
 
         Parameters:
         ----------
-        memory_matrix: Tensor (batch_size, memory_locations, vector_size)
+        memory_matrix: Tensor (batch_size, memory_locations, word_size)
             the memory matrix to lookup in
-        keys: Tensor (batch_size, vector_size, number_of_keys)
+        keys: Tensor (batch_size, word_size, number_of_keys)
             the keys to query the memory with
         strengths: Tensor (batch_size, number_of_keys, )
             the list of strengths for each lookup key
@@ -101,8 +102,7 @@ class Memory:
             weights after circular Convolution
         """
 
-        # TODO: Needs to be checked and verified
-        size = int(gated_weighting.get_shape()[0])
+        size = int(gated_weighting.get_shape()[1])
         kernel_size = int(shift_weighting.get_shape()[0])
         kernel_shift = int(math.floor(kernel_size/2.0))
 
@@ -114,10 +114,10 @@ class Memory:
         kernels = []
         for i in xrange(size):
             indices = [loop(i+j) for j in xrange(kernel_shift, -kernel_shift-1, -1)]
-            v_ = tf.gather(gated_weighting, indices)
-            kernels.append(tf.reduce_sum(v_ * shift_weighting, 0))
+            v_ = tf.transpose(tf.gather(tf.transpose(gated_weighting), indices))
+            kernels.append(tf.reduce_sum(v_ * shift_weighting, 1))
 
-        return tf.dynamic_stitch([i for i in xrange(size)], kernels)
+        return tf.transpose(tf.stack(kernels, axis=0))
 
     def sharp_weights(self,after_conv_shift, sharp_gamma):
         """
@@ -135,7 +135,7 @@ class Memory:
         """
 
         powed_conv_w = tf.pow(after_conv_shift, sharp_gamma)
-        return powed_conv_w / tf.reduce_sum(powed_conv_w)
+        return powed_conv_w / tf.expand_dims(tf.reduce_sum(powed_conv_w,1),1)
 
     def update_memory(self, memory_matrix, write_weighting, add_vector, erase_vector):
         """
@@ -144,23 +144,23 @@ class Memory:
 
         Parameters:
         ----------
-        memory_matrix: Tensor (batch_size, memory_locations, vector_size)
+        memory_matrix: Tensor (batch_size, memory_locations, word_size)
             the memory matrix from previous step
         write_weighting: Tensor (batch_size, memory_locations)
             the weight of writing at each memory location
-        add_vector: Tensor (batch_size, vector_size)
+        add_vector: Tensor (batch_size, word_size)
             a vector specifying what to write
-        erase_vector: Tensor (batch_size, vector_size)
+        erase_vector: Tensor (batch_size, word_size)
             a vector specifying what to erase from memory
 
-        Returns: Tensor (batch_size, memory_locations, vector_size)
+        Returns: Tensor (batch_size, memory_locations, word_size)
             the updated memory matrix
         """
 
         # expand data with a dimension of 1 at multiplication-adjacent location
         # to force matmul to behave as an outer product
         write_weighting = tf.expand_dims(write_weighting, 2)
-        write_vector = tf.expand_dims(write_vector, 1)
+        add_vector = tf.expand_dims(add_vector, 1)
         erase_vector = tf.expand_dims(erase_vector, 1)
 
         erasing = memory_matrix * (1 - tf.batch_matmul(write_weighting, erase_vector))
@@ -175,12 +175,12 @@ class Memory:
 
         Parameters:
         ----------
-        memory_matrix: Tensor (batch_size, memory_locations, vector_size)
+        memory_matrix: Tensor (batch_size, memory_locations, word_size)
             the recently updated memory matrix
         read_weightings: Tensor (batch_size, memory_locations, read_heads)
             the amount of info to read from each memory location by each read head
 
-        Returns: Tensor (vector_size, read_heads)
+        Returns: Tensor (word_size, read_heads)
         """
 
         updated_read_vectors = tf.batch_matmul(memory_matrix, read_weightings, adj_x=True)
@@ -195,11 +195,11 @@ class Memory:
 
         Parameters:
         ----------
-        memory_matrix: Tensor (batch_size, memory_locations, vector_size)
+        memory_matrix: Tensor (batch_size, memory_locations, word_size)
             the memory matrix from previous step
         write_weighting: Tensor (batch_size, memory_locations)
             the write_weighting from the last time step
-        key: Tensor (batch_size, vector_size, 1)
+        key: Tensor (batch_size, word_size, 1)
             the key to query the memory location with
         strength: Tensor (batch_size, 1)
             the strength of the query key (beta)
@@ -209,14 +209,14 @@ class Memory:
             distribution over the allowed integer shifts
         sharp_gamma: Tensor (batch_size, 1)
             scalar to sharpen the final weights
-        add_vector: Tensor (batch_size, vector_size)
+        add_vector: Tensor (batch_size, word_size)
             specifications of what to add to memory
-        erase_vector: Tensor(batch_size, vector_size)
+        erase_vector: Tensor(batch_size, word_size)
             specifications of what to erase from memory
 
         Returns : Tuple
             the updated write_weighting: Tensor(batch_size, memory_locations)
-            the updated memory_matrix: Tensor (batch_size, memory_locations, vector_size)
+            the updated memory_matrix: Tensor (batch_size, memory_locations, word_size)
         """
 
         content_addressed_w = self.get_content_adressing(memory_matrix, key, strength)
@@ -238,11 +238,11 @@ class Memory:
 
         Parameters:
         ---------
-        memory_matrix: Tensor (batch_size, memory_locations, vector_size)
+        memory_matrix: Tensor (batch_size, memory_locations, word_size)
             the memory matrix from previous step
         read_weightings: Tensor (batch_size, memory_locations)
             the read_weightings from the last time step
-        key: Tensor (batch_size, vector_size, 1)
+        key: Tensor (batch_size, word_size, 1)
             the key to query the memory location with
         strength: Tensor (batch_size, 1)
             the strength of the query key (beta)
@@ -255,7 +255,7 @@ class Memory:
 
         Returns: Tuple
             the updated read_weightings: Tensor(batch_size, memory_locations, read_heads)
-            the recently read vectors: Tensor (batch_size, vector_size, read_heads)
+            the recently read vectors: Tensor (batch_size, word_size, read_heads)
         """
 
         content_addressed_w = self.get_content_adressing(memory_matrix, key, strength)
