@@ -36,7 +36,7 @@ class Memory:
 
         return (
             tf.fill([self.batch_size, self.memory_locations, self.word_size], 1e-6),  # initial memory matrix
-            tf.fill([self.batch_size, self.memory_locations, ], 1e-6),  # initial write weighting
+            tf.fill([self.batch_size, self.memory_locations, 1], 1e-6),  # initial write weighting
             tf.fill([self.batch_size, self.memory_locations, self.read_heads], 1e-6),  # initial read weightings
             tf.fill([self.batch_size, self.word_size, self.read_heads], 1e-6),  # initial read vectors
         )
@@ -72,17 +72,17 @@ class Memory:
 
         Parameters:
         ----------
-        content_weights: Tensor (batch_size, memory_locations, number_of_keys)
-            content_based addressing weights
-        prev_weights: Tensor (batch_size, memory_locations)
-            the write_weighting from the last time step
-        interpolation_gate: Tensor (batch_size, 1)
-            blending factor g
+        content_weights: Tensor (batch_size, memory_locations, number_of_heads)
+            content_based addressing weight(s)
+        prev_weights: Tensor (batch_size, memory_locations, number_of_heads)
+            the weighting(s) from the last time step
+        interpolation_gate: Tensor (batch_size, number_of_heads)
+            blending factor(s) g
 
-        Returns: Tensor (batch_size, memory_locations, number_of_keys)
-            The gated weighting
+        Returns: Tensor (batch_size, memory_locations, number_of_heads)
+            The gated weighting(s)
         """
-
+        interpolation_gate = tf.expand_dims(interpolation_gate,1)
         gated_weighting = interpolation_gate * content_weights + (1 - interpolation_gate) * prev_weights
 
         return gated_weighting
@@ -95,7 +95,7 @@ class Memory:
         ----------
         gated_weighting: Tensor (batch_size, memory_locations, number_of_keys)
             The gated weighting
-        shift_weighting: Tensor (batch_size, ?)
+        shift_weighting: Tensor (batch_size, shift_range*2+1, number_of_keys)
             distribution over the allowed integer shifts
 
         Returns: Tensor (batch_size, memory_locations, number_of_keys)
@@ -103,7 +103,7 @@ class Memory:
         """
 
         size = int(gated_weighting.get_shape()[1])
-        kernel_size = int(shift_weighting.get_shape()[0])
+        kernel_size = int(shift_weighting.get_shape()[1])
         kernel_shift = int(math.floor(kernel_size/2.0))
 
         def loop(idx):
@@ -114,10 +114,10 @@ class Memory:
         kernels = []
         for i in xrange(size):
             indices = [loop(i+j) for j in xrange(kernel_shift, -kernel_shift-1, -1)]
-            v_ = tf.transpose(tf.gather(tf.transpose(gated_weighting), indices))
+            v_ = tf.transpose(tf.gather(tf.transpose(gated_weighting,perm=(1,2,0)), indices),perm=(2,0,1))
             kernels.append(tf.reduce_sum(v_ * shift_weighting, 1))
 
-        return tf.transpose(tf.stack(kernels, axis=0))
+        return tf.stack(kernels, axis=1)
 
     def sharp_weights(self,after_conv_shift, sharp_gamma):
         """
@@ -127,13 +127,13 @@ class Memory:
         ----------
         after_conv_shift: Tensor (batch_size, memory_locations, number_of_keys)
             weights after circular Convolution
-        sharp_gamma: Tensor (batch_size, 1)
+        sharp_gamma: Tensor (batch_size, number_of_keys)
             scalar to sharpen the final weights
 
         Returns: Tensor (batch_size, memory_locations, number_of_keys)
             final weights
         """
-
+        sharp_gamma = tf.expand_dims(sharp_gamma,1)
         powed_conv_w = tf.pow(after_conv_shift, sharp_gamma)
         return powed_conv_w / tf.expand_dims(tf.reduce_sum(powed_conv_w,1),1)
 
@@ -146,7 +146,7 @@ class Memory:
         ----------
         memory_matrix: Tensor (batch_size, memory_locations, word_size)
             the memory matrix from previous step
-        write_weighting: Tensor (batch_size, memory_locations)
+        write_weighting: Tensor (batch_size, memory_locations,1)
             the weight of writing at each memory location
         add_vector: Tensor (batch_size, word_size)
             a vector specifying what to write
@@ -159,7 +159,6 @@ class Memory:
 
         # expand data with a dimension of 1 at multiplication-adjacent location
         # to force matmul to behave as an outer product
-        write_weighting = tf.expand_dims(write_weighting, 2)
         add_vector = tf.expand_dims(add_vector, 1)
         erase_vector = tf.expand_dims(erase_vector, 1)
 
@@ -180,7 +179,7 @@ class Memory:
         read_weightings: Tensor (batch_size, memory_locations, read_heads)
             the amount of info to read from each memory location by each read head
 
-        Returns: Tensor (word_size, read_heads)
+        Returns: Tensor (batch_size, word_size, read_heads)
         """
 
         updated_read_vectors = tf.batch_matmul(memory_matrix, read_weightings, adj_x=True)
@@ -205,7 +204,7 @@ class Memory:
             the strength of the query key (beta)
         interpolation_gate: Tensor (batch_size, 1)
             blending factor g
-        shift_weighting: Tensor (batch_size, ?)
+        shift_weighting: Tensor (batch_size, shift_range*2+1)
             distribution over the allowed integer shifts
         sharp_gamma: Tensor (batch_size, 1)
             scalar to sharpen the final weights
@@ -220,7 +219,7 @@ class Memory:
         """
 
         content_addressed_w = self.get_content_adressing(memory_matrix, key, strength)
-        content_addressed_w = tf.squeeze(content_addressed_w,axis=2)
+        #content_addressed_w = tf.squeeze(content_addressed_w,axis=2)
         gated_weighting = self.apply_interpolation(content_addressed_w,write_weighting,interpolation_gate)
         after_conv_shift = self.apply_conv_shift(gated_weighting,shift_weighting)
         new_write_weighting = self.sharp_weights(after_conv_shift, sharp_gamma)
@@ -231,8 +230,8 @@ class Memory:
         return new_write_weighting, new_memory_matrix
 
 
-    def read(self, memory_matrix, read_weightings, key, strength, interpolation_gate, shift_weighting,
-             sharp_gamma):
+    def read(self, memory_matrix, read_weightings, keys, strengths, interpolation_gates, shift_weightings,
+             sharp_gammas):
         """
         defines the complete pipeline for reading from memory
 
@@ -240,17 +239,17 @@ class Memory:
         ---------
         memory_matrix: Tensor (batch_size, memory_locations, word_size)
             the memory matrix from previous step
-        read_weightings: Tensor (batch_size, memory_locations)
+        read_weightings: Tensor (batch_size, memory_locations, read_heads)
             the read_weightings from the last time step
-        key: Tensor (batch_size, word_size, 1)
-            the key to query the memory location with
-        strength: Tensor (batch_size, 1)
+        key: Tensor (batch_size, word_size, read_heads)
+            the keys to query the memory location with
+        strengths: Tensor (batch_size, read_heads)
             the strength of the query key (beta)
-        interpolation_gate: Tensor (batch_size, 1)
+        interpolation_gates: Tensor (batch_size, read_heads)
             blending factor g
-        shift_weighting: Tensor (batch_size, ?)
+        shift_weightings: Tensor (batch_size, shift_range*2+1,read_heads)
             distribution over the allowed integer shifts
-        sharp_gamma: Tensor (batch_size, 1)
+        sharp_gammas: Tensor (batch_size, read_heads)
             scalar to sharpen the final weights
 
         Returns: Tuple
@@ -258,10 +257,10 @@ class Memory:
             the recently read vectors: Tensor (batch_size, word_size, read_heads)
         """
 
-        content_addressed_w = self.get_content_adressing(memory_matrix, key, strength)
-        gated_weighting = self.apply_interpolation(content_addressed_w,read_weightings,interpolation_gate)
-        after_conv_shift = self.apply_conv_shift(gated_weighting,shift_weighting)
-        new_read_weightings = self.sharp_weights(after_conv_shift, sharp_gamma)
+        content_addressed_w = self.get_content_adressing(memory_matrix, keys, strengths)
+        gated_weightings = self.apply_interpolation(content_addressed_w,read_weightings,interpolation_gates)
+        after_conv_shift = self.apply_conv_shift(gated_weightings,shift_weightings)
+        new_read_weightings = self.sharp_weights(after_conv_shift, sharp_gammas)
 
         new_read_vectors = self.update_read_vectors(memory_matrix, new_read_weightings)
 
