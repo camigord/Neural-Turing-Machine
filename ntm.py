@@ -6,8 +6,8 @@ import os
 
 class NTM:
 
-    def __init__(self, controller_class, input_size, output_size, max_sequence_length,
-                 memory_locations = 256, memory_word_size = 64, memory_read_heads = 4, shift_range=1, batch_size = 1):
+    def __init__(self, controller_class, input_size, output_size, memory_locations = 256,
+                 memory_word_size = 64, memory_read_heads = 4, shift_range=1, batch_size = 1):
         """
         constructs a complete DNC architecture as described in the "Neural Turing Machines" paper
         https://arxiv.org/abs/1410.5401
@@ -20,8 +20,6 @@ class NTM:
             the size of the input vector
         output_size: int
             the size of the output vector
-        max_sequence_length: int
-            the maximum length of an input sequence
         memory_locations: int
             the number of words that can be stored in memory
         memory_word_size: int
@@ -36,7 +34,6 @@ class NTM:
 
         self.input_size = input_size
         self.output_size = output_size
-        self.max_sequence_length = max_sequence_length
         self.memory_locations = memory_locations
         self.word_size = memory_word_size
         self.read_heads = memory_read_heads
