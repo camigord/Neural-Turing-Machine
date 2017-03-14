@@ -39,7 +39,7 @@ if __name__ == '__main__':
 
     batch_size = 1
     input_size = output_size = 9
-    sequence_max_length = 20
+    sequence_max_length = 10
     memory_size = 128
     word_size = 20
     read_heads = 1
@@ -123,7 +123,7 @@ if __name__ == '__main__':
                 input_data, target_output = generate_data(batch_size, random_length, input_size)
 
                 summarize = (i % 100 == 0)
-                take_checkpoint = (i != 0) and (i % iterations == 0)
+                take_checkpoint = ((i != 0) and (i % 1000 == 0)) or (i % iterations == 0)
 
                 loss_value, _, summary = session.run([
                     loss,
