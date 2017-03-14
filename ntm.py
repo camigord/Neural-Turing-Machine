@@ -44,9 +44,11 @@ class NTM:
         self.controller = controller_class(self.input_size, self.output_size, self.read_heads, self.word_size, self.shift_range, self.batch_size)
 
         # input data placeholders
-        self.input_data = tf.placeholder(tf.float32, [batch_size, None, input_size], name='input')
-        self.target_output = tf.placeholder(tf.float32, [batch_size, None, output_size], name='targets')
-        self.sequence_length = tf.placeholder(tf.int32, name='sequence_length')
+        with tf.name_scope("Input"):
+            self.input_data = tf.placeholder(tf.float32, [batch_size, None, input_size], name='input')
+            self.target_output = tf.placeholder(tf.float32, [batch_size, None, output_size], name='targets')
+            self.sequence_length = tf.placeholder(tf.int32, name='sequence_length')
+            self.unpacked_input_data = utility.unpack_into_tensorarray(self.input_data, 1, self.sequence_length)
 
         self.build_graph()
 
@@ -55,21 +57,22 @@ class NTM:
         builds the computational graph that performs a step-by-step evaluation
         of the input data batches
         """
+        with tf.name_scope("Outputs") as outputs_scope:
+            outputs = tf.TensorArray(tf.float32, self.sequence_length,name='TA_Outputs')
+            read_weightings = tf.TensorArray(tf.float32, self.sequence_length,name='TA_Read_W')
+            write_weightings = tf.TensorArray(tf.float32, self.sequence_length,name='TA_Write_W')
 
-        self.unpacked_input_data = utility.unpack_into_tensorarray(self.input_data, 1, self.sequence_length)
+        with tf.name_scope("Controller_State") as controller_scope:
+            controller_state = self.controller.get_state() if self.controller.has_recurrent_nn else (tf.zeros(1), tf.zeros(1))
+            if not isinstance(controller_state, LSTMStateTuple):
+                controller_state = LSTMStateTuple(controller_state[0], controller_state[1])
 
-        # TODO: Check this
-        outputs = tf.TensorArray(tf.float32, self.sequence_length)
-        read_weightings = tf.TensorArray(tf.float32, self.sequence_length)
-        write_weightings = tf.TensorArray(tf.float32, self.sequence_length)
+        with tf.name_scope("Memory_State"):
+            memory_state = self.memory.init_memory()
 
-        controller_state = self.controller.get_state() if self.controller.has_recurrent_nn else (tf.zeros(1), tf.zeros(1))
-        memory_state = self.memory.init_memory()
-        if not isinstance(controller_state, LSTMStateTuple):
-            controller_state = LSTMStateTuple(controller_state[0], controller_state[1])
         final_results = None
 
-        with tf.variable_scope("sequence_loop") as scope:
+        with tf.variable_scope("Sequence_Loop") as scope:
             time = tf.constant(0, dtype=tf.int32)
 
             final_results = tf.while_loop(
@@ -83,16 +86,19 @@ class NTM:
                 swap_memory=True
             )
 
-        dependencies = []
-        if self.controller.has_recurrent_nn:
-            dependencies.append(self.controller.update_state(final_results[5]))
+        with tf.name_scope(controller_scope):
+            dependencies = []
+            if self.controller.has_recurrent_nn:
+                dependencies.append(self.controller.update_state(final_results[5]))
 
-        with tf.control_dependencies(dependencies):
-            self.packed_output = utility.pack_into_tensor(final_results[2], axis=1)
-            self.packed_memory_view = {
-                'read_weightings': utility.pack_into_tensor(final_results[3], axis=1),
-                'write_weightings': utility.pack_into_tensor(final_results[4], axis=1)
-            }
+        with tf.name_scope(outputs_scope):
+            with tf.name_scope("Tensor_Arrays"):
+                with tf.control_dependencies(dependencies):
+                    self.packed_output = utility.pack_into_tensor(final_results[2], axis=1)
+                    self.packed_memory_view = {
+                        'read_weightings': utility.pack_into_tensor(final_results[3], axis=1),
+                        'write_weightings': utility.pack_into_tensor(final_results[4], axis=1)
+                    }
 
     def _loop_body(self, time, memory_state, outputs, read_weightings, write_weightings, controller_state):
         """
