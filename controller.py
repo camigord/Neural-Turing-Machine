@@ -159,7 +159,7 @@ class BaseController:
 
         w_key_shape = (-1, self.word_size, 1)
         w_scalars_shape = (-1, 1)
-        w_shift_shape = (-1, self.shift_range * 2 + 1)
+        w_shift_shape = (-1, self.shift_range * 2 + 1,1)
 
         write_shape = erase_shape = (-1, self.word_size)
 

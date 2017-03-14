@@ -204,7 +204,7 @@ class Memory:
             the strength of the query key (beta)
         interpolation_gate: Tensor (batch_size, 1)
             blending factor g
-        shift_weighting: Tensor (batch_size, shift_range*2+1)
+        shift_weighting: Tensor (batch_size, shift_range*2+1,1)
             distribution over the allowed integer shifts
         sharp_gamma: Tensor (batch_size, 1)
             scalar to sharpen the final weights
@@ -219,11 +219,9 @@ class Memory:
         """
 
         content_addressed_w = self.get_content_adressing(memory_matrix, key, strength)
-        #content_addressed_w = tf.squeeze(content_addressed_w,axis=2)
         gated_weighting = self.apply_interpolation(content_addressed_w,write_weighting,interpolation_gate)
         after_conv_shift = self.apply_conv_shift(gated_weighting,shift_weighting)
         new_write_weighting = self.sharp_weights(after_conv_shift, sharp_gamma)
-
         # Write in memory
         new_memory_matrix = self.update_memory(memory_matrix, new_write_weighting, add_vector, erase_vector)
 

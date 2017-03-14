@@ -90,17 +90,17 @@ if __name__ == '__main__':
             gradients = optimizer.compute_gradients(loss)
             for i, (grad, var) in enumerate(gradients):
                 if grad is not None:
-                    summaries.append(tf.histogram_summary(var.name + '/grad', grad))
+                    summaries.append(tf.summary.histogram(var.name + '/grad', grad))
                     gradients[i] = (tf.clip_by_value(grad, -10, 10), var)
 
             apply_gradients = optimizer.apply_gradients(gradients)
 
-            summaries.append(tf.scalar_summary("Loss", loss))
+            summaries.append(tf.summary.scalar("Loss", loss))
 
-            summarize_op = tf.merge_summary(summaries)
+            summarize_op = tf.summary.merge(summaries)
             no_summarize = tf.no_op()
 
-            summarizer = tf.train.SummaryWriter(tb_logs_dir, session.graph)
+            summarizer = tf.summary.FileWriter(tb_logs_dir, session.graph)
 
             llprint("Done!\n")
 
