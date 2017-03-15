@@ -164,20 +164,20 @@ class BaseController:
         write_shape = erase_shape = (-1, self.word_size)
 
         # parsing the vector into its individual components
-        parsed['read_keys'] = tf.reshape(interface_vector[:, :r_keys_end], r_keys_shape)
+        parsed['read_keys'] = tf.tanh(tf.reshape(interface_vector[:, :r_keys_end], r_keys_shape))
         parsed['read_strengths'] = tf.nn.softplus(tf.reshape(interface_vector[:, r_keys_end:r_strengths_end], r_scalars_shape))
         parsed['read_gates'] = tf.sigmoid(tf.reshape(interface_vector[:, r_strengths_end:r_gates_end], r_scalars_shape))
         parsed['read_gammas'] = tf.nn.softplus(tf.reshape(interface_vector[:, r_gates_end:r_gamma_end], r_scalars_shape)) + 1
         parsed['read_shifts'] = tf.nn.softmax(tf.reshape(interface_vector[:, r_gamma_end:r_shift_end], r_shift_shape),dim=1)
 
-        parsed['write_key'] = tf.reshape(interface_vector[:, r_shift_end:w_key_end], w_key_shape)
+        parsed['write_key'] = tf.tanh(tf.reshape(interface_vector[:, r_shift_end:w_key_end], w_key_shape))
         parsed['write_strength'] = tf.nn.softplus(tf.reshape(interface_vector[:, w_key_end:w_strengths_end], w_scalars_shape))
         parsed['write_gate'] = tf.sigmoid(tf.reshape(interface_vector[:, w_strengths_end:w_gates_end], w_scalars_shape))
         parsed['write_gamma'] = tf.nn.softplus(tf.reshape(interface_vector[:, w_gates_end:w_gamma_end], w_scalars_shape)) + 1
-        parsed['write_shift'] = tf.nn.softmax(tf.reshape(interface_vector[:, w_gamma_end:w_shift_end], w_shift_shape))
+        parsed['write_shift'] = tf.nn.softmax(tf.reshape(interface_vector[:, w_gamma_end:w_shift_end], w_shift_shape),dim=1)
 
         parsed['erase_vector'] = tf.sigmoid(tf.reshape(interface_vector[:, w_shift_end:erase_end], erase_shape))
-        parsed['write_vector'] = tf.reshape(interface_vector[:, erase_end:write_end], write_shape)
+        parsed['write_vector'] = tf.tanh(tf.reshape(interface_vector[:, erase_end:write_end], write_shape))
 
         return parsed
 
@@ -221,7 +221,7 @@ class BaseController:
 
     def final_output(self, pre_output, new_read_vectors):
         """
-        returns the final output by taking rececnt memory changes into account
+        returns the final output by taking recent memory changes into account
 
         Parameters:
         ----------

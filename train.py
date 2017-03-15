@@ -15,6 +15,18 @@ def llprint(message):
     sys.stdout.flush()
 
 def generate_data(batch_size, length, size):
+    input_data = np.zeros((batch_size, 2 * length + 2, size), dtype=np.float32)
+    target_output = np.zeros((batch_size, 2 * length + 2, size), dtype=np.float32)
+
+    sequence = np.random.binomial(1, 0.5, (batch_size, length, size - 2))
+    input_data[:, 0, 0] = 1
+    input_data[:, 1:length+1, 1:size-1] = sequence
+    input_data[:, length+1, -1] = 1  # the end symbol
+    target_output[:, length + 2:, 1:size-1] = sequence
+
+    return input_data, target_output
+
+'''def generate_data(batch_size, length, size):
     input_data = np.zeros((batch_size, 2 * length + 1, size), dtype=np.float32)
     target_output = np.zeros((batch_size, 2 * length + 1, size), dtype=np.float32)
 
@@ -25,7 +37,7 @@ def generate_data(batch_size, length, size):
     target_output[:, length + 1:, :size - 1] = sequence
 
     return input_data, target_output
-
+'''
 
 def binary_cross_entropy(predictions, targets):
     return tf.reduce_mean(-1 * targets * tf.log(predictions) - (1 - targets) * tf.log(1 - predictions))
@@ -38,7 +50,7 @@ if __name__ == '__main__':
     tb_logs_dir = os.path.join(dirname, 'logs')
 
     batch_size = 1
-    input_size = output_size = 9
+    input_size = output_size = 10
     sequence_max_length = 10
     memory_size = 128
     word_size = 20
@@ -47,6 +59,7 @@ if __name__ == '__main__':
 
     learning_rate = 1e-4
     momentum = 0.9
+    decay_rate = 0.95
 
     from_checkpoint = None
     iterations = 100000
@@ -66,7 +79,8 @@ if __name__ == '__main__':
 
             llprint("Building Computational Graph ... ")
 
-            optimizer = tf.train.RMSPropOptimizer(learning_rate, momentum=momentum)
+            with tf.name_scope("Optimizer") as optimizer_scope:
+                optimizer = tf.train.RMSPropOptimizer(learning_rate, decay=decay_rate,momentum=momentum)
 
             turing_machine = NTM(
                 FeedforwardController,
@@ -79,28 +93,28 @@ if __name__ == '__main__':
                 batch_size
             )
 
-            # squash the DNC output between 0 and 1
-            output, _ = turing_machine.get_outputs()
-            squashed_output = tf.clip_by_value(tf.sigmoid(output), 1e-6, 1. - 1e-6)
-
-            loss = binary_cross_entropy(squashed_output, turing_machine.target_output)
+            with tf.name_scope("Loss") as loss_scope:
+                # squash the DNC output between 0 and 1
+                output, _ = turing_machine.get_outputs()
+                squashed_output = tf.clip_by_value(tf.sigmoid(output), 1e-6, 1. - 1e-6)
+                loss = binary_cross_entropy(squashed_output, turing_machine.target_output)
 
             summaries = []
 
-            gradients = optimizer.compute_gradients(loss)
-            for i, (grad, var) in enumerate(gradients):
-                if grad is not None:
-                    summaries.append(tf.summary.histogram(var.name + '/grad', grad))
-                    gradients[i] = (tf.clip_by_value(grad, -10, 10), var)
+            with tf.name_scope(optimizer_scope):
+                gradients = optimizer.compute_gradients(loss)
+                for i, (grad, var) in enumerate(gradients):
+                    if grad is not None:
+                        summaries.append(tf.summary.histogram(var.name + '/grad', grad))
+                        gradients[i] = (tf.clip_by_value(grad, -10, 10), var)
 
-            apply_gradients = optimizer.apply_gradients(gradients)
+                apply_gradients = optimizer.apply_gradients(gradients)
 
-            summaries.append(tf.summary.scalar("Loss", loss))
-
-            summarize_op = tf.summary.merge(summaries)
-            no_summarize = tf.no_op()
-
-            summarizer = tf.summary.FileWriter(tb_logs_dir, session.graph)
+            with tf.name_scope(loss_scope):
+                summaries.append(tf.summary.scalar("Loss", loss))
+                summarize_op = tf.summary.merge(summaries)
+                no_summarize = tf.no_op()
+                summarizer = tf.summary.FileWriter(tb_logs_dir, session.graph)
 
             llprint("Done!\n")
 
@@ -132,7 +146,7 @@ if __name__ == '__main__':
                 ], feed_dict={
                     turing_machine.input_data: input_data,
                     turing_machine.target_output: target_output,
-                    turing_machine.sequence_length: 2 * random_length + 1
+                    turing_machine.sequence_length: 2 * random_length + 2
                 })
 
                 last_100_losses.append(loss_value)
