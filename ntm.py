@@ -58,17 +58,17 @@ class NTM:
         of the input data batches
         """
         with tf.name_scope("Outputs") as outputs_scope:
-            outputs = tf.TensorArray(tf.float32, self.sequence_length,name='TA_Outputs')
-            read_weightings = tf.TensorArray(tf.float32, self.sequence_length,name='TA_Read_W')
-            write_weightings = tf.TensorArray(tf.float32, self.sequence_length,name='TA_Write_W')
+            outputs = tf.TensorArray(tf.float32, self.sequence_length)
+            read_weightings = tf.TensorArray(tf.float32, self.sequence_length)
+            write_weightings = tf.TensorArray(tf.float32, self.sequence_length)
+            write_vectors = tf.TensorArray(tf.float32, self.sequence_length)
 
         with tf.name_scope("Controller_State") as controller_scope:
             controller_state = self.controller.get_state() if self.controller.has_recurrent_nn else (tf.zeros(1), tf.zeros(1))
             if not isinstance(controller_state, LSTMStateTuple):
                 controller_state = LSTMStateTuple(controller_state[0], controller_state[1])
 
-        with tf.name_scope("Memory_State"):
-            memory_state = self.memory.init_memory()
+        memory_state = self.memory.init_memory()
 
         final_results = None
 
@@ -80,7 +80,7 @@ class NTM:
                 body=self._loop_body,
                 loop_vars=(
                     time, memory_state, outputs,
-                    read_weightings, write_weightings, controller_state
+                    read_weightings, write_weightings, controller_state, write_vectors
                 ),
                 parallel_iterations=32,
                 swap_memory=True
@@ -97,10 +97,11 @@ class NTM:
                     self.packed_output = utility.pack_into_tensor(final_results[2], axis=1)
                     self.packed_memory_view = {
                         'read_weightings': utility.pack_into_tensor(final_results[3], axis=1),
-                        'write_weightings': utility.pack_into_tensor(final_results[4], axis=1)
+                        'write_weightings': utility.pack_into_tensor(final_results[4], axis=1),
+                        'write_vectors': utility.pack_into_tensor(final_results[6], axis=1)
                     }
 
-    def _loop_body(self, time, memory_state, outputs, read_weightings, write_weightings, controller_state):
+    def _loop_body(self, time, memory_state, outputs, read_weightings, write_weightings, controller_state, write_vectors):
         """
         the body of the DNC sequence processing loop
 
@@ -130,11 +131,12 @@ class NTM:
         # collecting memory view for the current step
         read_weightings = read_weightings.write(time, output_list[2])
         write_weightings = write_weightings.write(time, output_list[1])
+        write_vectors = write_vectors.write(time, output_list[7])
 
         return (
             time + 1, new_memory_state, outputs,
             read_weightings, write_weightings,
-            new_controller_state
+            new_controller_state, write_vectors
         )
 
 
@@ -191,11 +193,13 @@ class NTM:
             read_weightings,
             read_vectors,
 
-            self.controller.final_output(pre_output, read_vectors),
+            pre_output,
+            #self.controller.final_output(pre_output, read_vectors),
 
             # report new state of RNN if exists
             nn_state[0] if nn_state is not None else tf.zeros(1),
-            nn_state[1] if nn_state is not None else tf.zeros(1)
+            nn_state[1] if nn_state is not None else tf.zeros(1),
+            interface['write_vector']
         ]
 
     def get_outputs(self):

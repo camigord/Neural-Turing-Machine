@@ -9,6 +9,7 @@ import os
 
 from ntm import NTM
 from feedforward_controller import FeedforwardController
+from recurrent_controller import RecurrentController
 
 def llprint(message):
     sys.stdout.write(message)
@@ -26,22 +27,14 @@ def generate_data(batch_size, length, size):
 
     return input_data, target_output
 
-'''def generate_data(batch_size, length, size):
-    input_data = np.zeros((batch_size, 2 * length + 1, size), dtype=np.float32)
-    target_output = np.zeros((batch_size, 2 * length + 1, size), dtype=np.float32)
-
-    sequence = np.random.binomial(1, 0.5, (batch_size, length, size - 1))
-
-    input_data[:, :length, :size - 1] = sequence
-    input_data[:, length, -1] = 1  # the end symbol
-    target_output[:, length + 1:, :size - 1] = sequence
-
-    return input_data, target_output
-'''
-
 def binary_cross_entropy(predictions, targets):
     return tf.reduce_mean(-1 * targets * tf.log(predictions) - (1 - targets) * tf.log(1 - predictions))
 
+def hamming_distance(s1, s2):
+    """Return the Hamming distance between equal-length sequences"""
+    if len(s1) != len(s2):
+        raise ValueError("Undefined for sequences of unequal length")
+    return sum(el1 != el2 for el1, el2 in zip(s1, s2))
 
 if __name__ == '__main__':
 
@@ -51,7 +44,7 @@ if __name__ == '__main__':
 
     batch_size = 1
     input_size = output_size = 10
-    sequence_max_length = 10
+    sequence_max_length = 20
     memory_size = 128
     word_size = 20
     read_heads = 1
@@ -62,7 +55,7 @@ if __name__ == '__main__':
     decay_rate = 0.95
 
     from_checkpoint = None
-    iterations = 100000
+    iterations = 300000
 
     options,_ = getopt.getopt(sys.argv[1:], '', ['checkpoint=', 'iterations='])
 
@@ -83,7 +76,7 @@ if __name__ == '__main__':
                 optimizer = tf.train.RMSPropOptimizer(learning_rate, decay=decay_rate,momentum=momentum)
 
             turing_machine = NTM(
-                FeedforwardController,
+                RecurrentController,
                 input_size,
                 output_size,
                 memory_size,
@@ -127,7 +120,6 @@ if __name__ == '__main__':
                 turing_machine.restore(session, ckpts_dir, from_checkpoint)
                 llprint("Done!\n")
 
-
             last_100_losses = []
 
             for i in xrange(iterations + 1):
@@ -137,12 +129,11 @@ if __name__ == '__main__':
                 input_data, target_output = generate_data(batch_size, random_length, input_size)
 
                 summarize = (i % 100 == 0)
-                take_checkpoint = ((i != 0) and (i % 1000 == 0)) or (i % iterations == 0)
+                take_checkpoint = ((i != 0) and (i % 10000 == 0)) or (i % iterations == 0)
 
-                loss_value, _, summary = session.run([
+                loss_value,_ = session.run([
                     loss,
                     apply_gradients,
-                    summarize_op if summarize else no_summarize
                 ], feed_dict={
                     turing_machine.input_data: input_data,
                     turing_machine.target_output: target_output,
@@ -150,9 +141,27 @@ if __name__ == '__main__':
                 })
 
                 last_100_losses.append(loss_value)
-                summarizer.add_summary(summary, i)
 
                 if summarize:
+                    summary, temp_output = session.run([
+                        summarize_op if summarize else no_summarize,
+                        squashed_output,
+                    ], feed_dict={
+                        turing_machine.input_data: input_data,
+                        turing_machine.target_output: target_output,
+                        turing_machine.sequence_length: 2 * random_length + 2
+                    })
+
+                    #  TODO: This works for batch size = 1
+                    seq_out = np.round(np.reshape(temp_output,(1,-1))).tolist()[0]
+                    seq_target = np.reshape(target_output,(1,-1)).tolist()[0]
+                    dist = hamming_distance(seq_out, seq_target)
+                    val = tf.Summary.Value(tag="Hamming_%",simple_value=dist)
+                    summary2 = tf.Summary(value=[val])
+
+                    summarizer.add_summary(summary, i)
+                    summarizer.add_summary(summary2, i)
+
                     llprint("\n\tAvg. Logistic Loss: %.4f\n" % (np.mean(last_100_losses)))
                     last_100_losses = []
 

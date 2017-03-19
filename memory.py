@@ -83,7 +83,7 @@ class Memory:
             The gated weighting(s)
         """
         interpolation_gate = tf.expand_dims(interpolation_gate,1)
-        gated_weighting = interpolation_gate * content_weights + (1 - interpolation_gate) * prev_weights
+        gated_weighting = interpolation_gate * content_weights + (1.0 - interpolation_gate) * prev_weights
 
         return gated_weighting
 
