@@ -34,11 +34,17 @@ class Memory:
         Returns: Tuple
         """
 
-        return (
+        '''
             tf.fill([self.batch_size, self.memory_locations, self.word_size], 1e-6),  # initial memory matrix
             tf.fill([self.batch_size, self.memory_locations, 1], 1e-6),  # initial write weighting
             tf.fill([self.batch_size, self.memory_locations, self.read_heads], 1e-6),  # initial read weightings
             tf.fill([self.batch_size, self.word_size, self.read_heads], 1e-6),  # initial read vectors
+            '''
+        return (
+            tf.truncated_normal([self.batch_size, self.memory_locations, self.word_size], mean = 0.5, stddev=0.2),
+            tf.fill([self.batch_size, self.memory_locations, 1], 1e-6),  # initial write weighting
+            tf.truncated_normal([self.batch_size, self.memory_locations, self.read_heads],  mean = 0.4, stddev=0.1),
+            tf.fill([self.batch_size, self.word_size, self.read_heads], 1e-6),
         )
 
     def get_content_adressing(self, memory_matrix, keys, strengths):
@@ -51,7 +57,7 @@ class Memory:
             the memory matrix to lookup in
         keys: Tensor (batch_size, word_size, number_of_keys)
             the keys to query the memory with
-        strengths: Tensor (batch_size, number_of_keys, )
+        strengths: Tensor (batch_size, number_of_keys)
             the list of strengths for each lookup key
 
         Returns: Tensor (batch_size, memory_locations, number_of_keys)
@@ -102,6 +108,7 @@ class Memory:
             weights after circular Convolution
         """
 
+        '''
         size = int(gated_weighting.get_shape()[1])
         kernel_size = int(shift_weighting.get_shape()[1])
         kernel_shift = int(math.floor(kernel_size/2.0))
@@ -118,6 +125,19 @@ class Memory:
             kernels.append(tf.reduce_sum(v_ * shift_weighting, 1))
 
         return tf.stack(kernels, axis=1)
+        '''
+        gated_weighting = tf.concat(1, [tf.expand_dims(gated_weighting[:,-1,:], axis=-1), gated_weighting, tf.expand_dims(gated_weighting[:,0,:], axis=-1)])
+
+        gated_weighting = tf.expand_dims(gated_weighting,0)
+        shift_weighting = tf.expand_dims(shift_weighting,-1)
+
+        conv = tf.nn.conv2d(
+            gated_weighting,
+            shift_weighting,
+            strides=[1, 1, 1, 1],
+            padding="VALID")
+
+        return tf.squeeze(conv, axis=0)
 
     def sharp_weights(self,after_conv_shift, sharp_gamma):
         """

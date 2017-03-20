@@ -44,7 +44,7 @@ if __name__ == '__main__':
 
     batch_size = 1
     input_size = output_size = 10
-    sequence_max_length = 20
+    sequence_max_length = 10
     memory_size = 128
     word_size = 20
     read_heads = 1
@@ -52,7 +52,6 @@ if __name__ == '__main__':
 
     learning_rate = 1e-4
     momentum = 0.9
-    decay_rate = 0.95
 
     from_checkpoint = None
     iterations = 300000
@@ -72,8 +71,7 @@ if __name__ == '__main__':
 
             llprint("Building Computational Graph ... ")
 
-            with tf.name_scope("Optimizer") as optimizer_scope:
-                optimizer = tf.train.RMSPropOptimizer(learning_rate, decay=decay_rate,momentum=momentum)
+            optimizer = tf.train.RMSPropOptimizer(learning_rate,momentum=momentum)
 
             turing_machine = NTM(
                 RecurrentController,
@@ -86,28 +84,26 @@ if __name__ == '__main__':
                 batch_size
             )
 
-            with tf.name_scope("Loss") as loss_scope:
-                # squash the DNC output between 0 and 1
-                output, _ = turing_machine.get_outputs()
-                squashed_output = tf.clip_by_value(tf.sigmoid(output), 1e-6, 1. - 1e-6)
-                loss = binary_cross_entropy(squashed_output, turing_machine.target_output)
+            # squash the DNC output between 0 and 1
+            output, _ = turing_machine.get_outputs()
+            squashed_output = tf.clip_by_value(tf.sigmoid(output), 1e-6, 1. - 1e-6)
+            loss = binary_cross_entropy(squashed_output, turing_machine.target_output)
 
             summaries = []
 
-            with tf.name_scope(optimizer_scope):
-                gradients = optimizer.compute_gradients(loss)
-                for i, (grad, var) in enumerate(gradients):
-                    if grad is not None:
-                        summaries.append(tf.summary.histogram(var.name + '/grad', grad))
-                        gradients[i] = (tf.clip_by_value(grad, -10, 10), var)
 
-                apply_gradients = optimizer.apply_gradients(gradients)
+            gradients = optimizer.compute_gradients(loss)
+            for i, (grad, var) in enumerate(gradients):
+                if grad is not None:
+                    summaries.append(tf.summary.histogram(var.name + '/grad', grad))
+                    gradients[i] = (tf.clip_by_value(grad, -10, 10), var)
 
-            with tf.name_scope(loss_scope):
-                summaries.append(tf.summary.scalar("Loss", loss))
-                summarize_op = tf.summary.merge(summaries)
-                no_summarize = tf.no_op()
-                summarizer = tf.summary.FileWriter(tb_logs_dir, session.graph)
+            apply_gradients = optimizer.apply_gradients(gradients)
+
+            summaries.append(tf.summary.scalar("Loss", loss))
+            summarize_op = tf.summary.merge(summaries)
+            no_summarize = tf.no_op()
+            summarizer = tf.summary.FileWriter(tb_logs_dir, session.graph)
 
             llprint("Done!\n")
 
@@ -129,7 +125,7 @@ if __name__ == '__main__':
                 input_data, target_output = generate_data(batch_size, random_length, input_size)
 
                 summarize = (i % 100 == 0)
-                take_checkpoint = ((i != 0) and (i % 10000 == 0)) or (i % iterations == 0)
+                take_checkpoint = ((i != 0) and (i % 1000 == 0)) or (i % iterations == 0)
 
                 loss_value,_ = session.run([
                     loss,

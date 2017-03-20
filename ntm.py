@@ -44,11 +44,10 @@ class NTM:
         self.controller = controller_class(self.input_size, self.output_size, self.read_heads, self.word_size, self.shift_range, self.batch_size)
 
         # input data placeholders
-        with tf.name_scope("Input"):
-            self.input_data = tf.placeholder(tf.float32, [batch_size, None, input_size], name='input')
-            self.target_output = tf.placeholder(tf.float32, [batch_size, None, output_size], name='targets')
-            self.sequence_length = tf.placeholder(tf.int32, name='sequence_length')
-            self.unpacked_input_data = utility.unpack_into_tensorarray(self.input_data, 1, self.sequence_length)
+
+        self.input_data = tf.placeholder(tf.float32, [batch_size, None, input_size], name='input')
+        self.target_output = tf.placeholder(tf.float32, [batch_size, None, output_size], name='targets')
+        self.sequence_length = tf.placeholder(tf.int32, name='sequence_length')
 
         self.build_graph()
 
@@ -57,19 +56,24 @@ class NTM:
         builds the computational graph that performs a step-by-step evaluation
         of the input data batches
         """
-        with tf.name_scope("Outputs") as outputs_scope:
-            outputs = tf.TensorArray(tf.float32, self.sequence_length)
-            read_weightings = tf.TensorArray(tf.float32, self.sequence_length)
-            write_weightings = tf.TensorArray(tf.float32, self.sequence_length)
-            write_vectors = tf.TensorArray(tf.float32, self.sequence_length)
+        self.unpacked_input_data = utility.unpack_into_tensorarray(self.input_data, 1, self.sequence_length)
 
-        with tf.name_scope("Controller_State") as controller_scope:
-            controller_state = self.controller.get_state() if self.controller.has_recurrent_nn else (tf.zeros(1), tf.zeros(1))
-            if not isinstance(controller_state, LSTMStateTuple):
-                controller_state = LSTMStateTuple(controller_state[0], controller_state[1])
+        outputs = tf.TensorArray(tf.float32, self.sequence_length)
+        read_weightings = tf.TensorArray(tf.float32, self.sequence_length)
+        write_weightings = tf.TensorArray(tf.float32, self.sequence_length)
+        write_vectors = tf.TensorArray(tf.float32, self.sequence_length)
+        key_vectors = tf.TensorArray(tf.float32, self.sequence_length)
+        beta_vectors = tf.TensorArray(tf.float32, self.sequence_length)
+        shift_vectors = tf.TensorArray(tf.float32, self.sequence_length)
+        gamma_vectors = tf.TensorArray(tf.float32, self.sequence_length)
+        gates_vectors = tf.TensorArray(tf.float32, self.sequence_length)
+        memory_vectors = tf.TensorArray(tf.float32, self.sequence_length)
+
+        controller_state = self.controller.get_state() if self.controller.has_recurrent_nn else (tf.zeros(1), tf.zeros(1))
+        if not isinstance(controller_state, LSTMStateTuple):
+            controller_state = LSTMStateTuple(controller_state[0], controller_state[1])
 
         memory_state = self.memory.init_memory()
-
         final_results = None
 
         with tf.variable_scope("Sequence_Loop") as scope:
@@ -80,28 +84,36 @@ class NTM:
                 body=self._loop_body,
                 loop_vars=(
                     time, memory_state, outputs,
-                    read_weightings, write_weightings, controller_state, write_vectors
+                    read_weightings, write_weightings, controller_state, write_vectors,
+                    key_vectors, beta_vectors, shift_vectors, gamma_vectors,
+                    gates_vectors, memory_vectors
                 ),
                 parallel_iterations=32,
                 swap_memory=True
             )
 
-        with tf.name_scope(controller_scope):
-            dependencies = []
-            if self.controller.has_recurrent_nn:
-                dependencies.append(self.controller.update_state(final_results[5]))
 
-        with tf.name_scope(outputs_scope):
-            with tf.name_scope("Tensor_Arrays"):
-                with tf.control_dependencies(dependencies):
-                    self.packed_output = utility.pack_into_tensor(final_results[2], axis=1)
-                    self.packed_memory_view = {
-                        'read_weightings': utility.pack_into_tensor(final_results[3], axis=1),
-                        'write_weightings': utility.pack_into_tensor(final_results[4], axis=1),
-                        'write_vectors': utility.pack_into_tensor(final_results[6], axis=1)
-                    }
+        dependencies = []
+        if self.controller.has_recurrent_nn:
+            dependencies.append(self.controller.update_state(final_results[5]))
 
-    def _loop_body(self, time, memory_state, outputs, read_weightings, write_weightings, controller_state, write_vectors):
+        with tf.control_dependencies(dependencies):
+            self.packed_output = utility.pack_into_tensor(final_results[2], axis=1)
+            self.packed_memory_view = {
+                'read_weightings': utility.pack_into_tensor(final_results[3], axis=1),
+                'write_weightings': utility.pack_into_tensor(final_results[4], axis=1),
+                'write_vectors': utility.pack_into_tensor(final_results[6], axis=1),
+                'key_vectors': utility.pack_into_tensor(final_results[7], axis=1),
+                'beta_vectors': utility.pack_into_tensor(final_results[8], axis=1),
+                'shift_vectors': utility.pack_into_tensor(final_results[9], axis=1),
+                'gamma_vectors': utility.pack_into_tensor(final_results[10], axis=1),
+                'gates_vectors': utility.pack_into_tensor(final_results[11], axis=1),
+                'memory_vectors': utility.pack_into_tensor(final_results[12], axis=1)
+            }
+
+    def _loop_body(self, time, memory_state, outputs, read_weightings, write_weightings,
+                   controller_state, write_vectors,key_vectors, beta_vectors, shift_vectors,
+                   gamma_vectors,gates_vectors, memory_vectors):
         """
         the body of the DNC sequence processing loop
 
@@ -132,11 +144,19 @@ class NTM:
         read_weightings = read_weightings.write(time, output_list[2])
         write_weightings = write_weightings.write(time, output_list[1])
         write_vectors = write_vectors.write(time, output_list[7])
+        key_vectors = key_vectors.write(time, output_list[8])
+        beta_vectors = beta_vectors.write(time, output_list[9])
+        shift_vectors = shift_vectors.write(time, output_list[10])
+        gamma_vectors = gamma_vectors.write(time, output_list[11])
+        gates_vectors = gates_vectors.write(time, output_list[12])
+        memory_vectors = memory_vectors.write(time, output_list[0])
 
         return (
             time + 1, new_memory_state, outputs,
             read_weightings, write_weightings,
-            new_controller_state, write_vectors
+            new_controller_state, write_vectors,
+            key_vectors, beta_vectors, shift_vectors, gamma_vectors,
+            gates_vectors, memory_vectors
         )
 
 
@@ -199,7 +219,12 @@ class NTM:
             # report new state of RNN if exists
             nn_state[0] if nn_state is not None else tf.zeros(1),
             nn_state[1] if nn_state is not None else tf.zeros(1),
-            interface['write_vector']
+            interface['write_vector'],
+            interface['read_keys'],
+            interface['read_strengths'],
+            interface['read_shifts'],
+            interface['read_gammas'],
+            interface['read_gates']
         ]
 
     def get_outputs(self):
