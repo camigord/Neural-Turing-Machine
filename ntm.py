@@ -99,6 +99,7 @@ class NTM:
 
         with tf.control_dependencies(dependencies):
             self.packed_output = utility.pack_into_tensor(final_results[2], axis=1)
+            # packed_memory_view and its content is just for debugging purposes.
             self.packed_memory_view = {
                 'read_weightings': utility.pack_into_tensor(final_results[3], axis=1),
                 'write_weightings': utility.pack_into_tensor(final_results[4], axis=1),

@@ -68,10 +68,6 @@ class BaseController:
             tf.random_normal([self.nn_output_size, self.output_size], stddev=0.1),
             name='nn_output_weights'
         )
-        self.mem_output_weights = tf.Variable(
-            tf.random_normal([self.word_size * self.read_heads, self.output_size],  stddev=0.1),
-            name='mem_output_weights'
-        )
 
     def network_vars(self):
         """
@@ -163,22 +159,6 @@ class BaseController:
         write_shape = erase_shape = (-1, self.word_size)
 
         # parsing the vector into its individual components
-        '''
-        parsed['read_keys'] = tf.tanh(tf.reshape(interface_vector[:, :r_keys_end], r_keys_shape))
-        parsed['read_strengths'] = tf.nn.softplus(tf.reshape(interface_vector[:, r_keys_end:r_strengths_end], r_scalars_shape))
-        parsed['read_gates'] = tf.sigmoid(tf.reshape(interface_vector[:, r_strengths_end:r_gates_end], r_scalars_shape))
-        parsed['read_gammas'] = tf.nn.softplus(tf.reshape(interface_vector[:, r_gates_end:r_gamma_end], r_scalars_shape)) + 1
-        parsed['read_shifts'] = tf.nn.softmax(tf.reshape(interface_vector[:, r_gamma_end:r_shift_end], r_shift_shape),dim=1)
-
-        parsed['write_key'] = tf.tanh(tf.reshape(interface_vector[:, r_shift_end:w_key_end], w_key_shape))
-        parsed['write_strength'] = tf.nn.softplus(tf.reshape(interface_vector[:, w_key_end:w_strengths_end], w_scalars_shape))
-        parsed['write_gate'] = tf.sigmoid(tf.reshape(interface_vector[:, w_strengths_end:w_gates_end], w_scalars_shape))
-        parsed['write_gamma'] = tf.nn.softplus(tf.reshape(interface_vector[:, w_gates_end:w_gamma_end], w_scalars_shape)) + 1
-        parsed['write_shift'] = tf.nn.softmax(tf.reshape(interface_vector[:, w_gamma_end:w_shift_end], w_shift_shape),dim=1)
-
-        parsed['erase_vector'] = tf.sigmoid(tf.reshape(interface_vector[:, w_shift_end:erase_end], erase_shape))
-        parsed['write_vector'] = tf.tanh(tf.reshape(interface_vector[:, erase_end:write_end], write_shape))
-        '''
         parsed['read_keys'] = tf.reshape(interface_vector[:, :r_keys_end], r_keys_shape)
         parsed['read_strengths'] = tf.nn.softplus(tf.reshape(interface_vector[:, r_keys_end:r_strengths_end], r_scalars_shape))+1
         parsed['read_gates'] = tf.sigmoid(tf.reshape(interface_vector[:, r_strengths_end:r_gates_end], r_scalars_shape))
@@ -232,24 +212,3 @@ class BaseController:
             return pre_output, parsed_interface, nn_state
         else:
             return pre_output, parsed_interface
-
-
-    def final_output(self, pre_output, new_read_vectors):
-        """
-        returns the final output by taking recent memory changes into account
-
-        Parameters:
-        ----------
-        pre_output: Tensor (batch_size, output_size)
-            the ouput vector from the input processing step
-        new_read_vectors: Tensor (batch_size, words_size, read_heads)
-            the newly read vectors from the updated memory
-
-        Returns: Tensor (batch_size, output_size)
-        """
-
-        flat_read_vectors = tf.reshape(new_read_vectors, (-1, self.word_size * self.read_heads))
-
-        final_output = pre_output + tf.matmul(flat_read_vectors, self.mem_output_weights)
-
-        return final_output

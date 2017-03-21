@@ -39,7 +39,3 @@ class FeedforwardController(BaseController):
             tf.truncated_normal([self.nn_output_size, self.output_size], stddev=initial_std(self.nn_output_size)),
             name='nn_output_weights'
         )
-        self.mem_output_weights = tf.Variable(
-            tf.truncated_normal([self.word_size * self.read_heads, self.output_size],  stddev=initial_std(self.word_size * self.read_heads)),
-            name='mem_output_weights'
-        )

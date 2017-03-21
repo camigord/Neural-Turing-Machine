@@ -33,13 +33,6 @@ class Memory:
 
         Returns: Tuple
         """
-
-        '''
-            tf.fill([self.batch_size, self.memory_locations, self.word_size], 1e-6),  # initial memory matrix
-            tf.fill([self.batch_size, self.memory_locations, 1], 1e-6),  # initial write weighting
-            tf.fill([self.batch_size, self.memory_locations, self.read_heads], 1e-6),  # initial read weightings
-            tf.fill([self.batch_size, self.word_size, self.read_heads], 1e-6),  # initial read vectors
-            '''
         return (
             tf.truncated_normal([self.batch_size, self.memory_locations, self.word_size], mean = 0.5, stddev=0.2),
             tf.fill([self.batch_size, self.memory_locations, 1], 1e-6),  # initial write weighting
@@ -126,6 +119,10 @@ class Memory:
 
         return tf.stack(kernels, axis=1)
         '''
+
+        # TODO: This circular convolution is more efficient than the commented code, but it was harcoded for a batch_size=1
+        #       and for a shift_vector with 3 elements.
+                   
         gated_weighting = tf.concat(1, [tf.expand_dims(gated_weighting[:,-1,:], axis=-1), gated_weighting, tf.expand_dims(gated_weighting[:,0,:], axis=-1)])
 
         gated_weighting = tf.expand_dims(gated_weighting,0)
