@@ -31,7 +31,11 @@ To train a copy task:
 
 ## Results for the copy task
 
-_You can generate similar results or play with the sequence length in the [visualization notebook](visualization.ipynb)_
+_You can generate similar results or play with the sequence length in the [visualization notebook](https://github.com/camigord/Neural-Turing-Machine/blob/master/Visualization.ipynb)._
+
+It is really interesting to check the memory location map, where you can see that the network learns to address the memory in a sequential way and in the same order they were written into.
+
+As I mentioned, this model was trained with a maximum sequence length of 10, but it can generalize to longer sequences (in this case sequence length = 30).
 
 ![results](https://github.com/camigord/Neural-Turing-Machine/blob/master/assets/results.png)
 
