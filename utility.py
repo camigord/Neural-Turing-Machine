@@ -30,7 +30,7 @@ def unpack_into_tensorarray(value, axis, size=None):
     array = tf.TensorArray(dtype=dtype, size=array_size)
     dim_permutation = [axis] + range(1, axis) + [0] + range(axis + 1, rank)
     unpack_axis_major_value = tf.transpose(value, dim_permutation)
-    full_array = array.unpack(unpack_axis_major_value)
+    full_array = array.unstack(unpack_axis_major_value)
 
     return full_array
 
@@ -49,7 +49,7 @@ def pack_into_tensor(array, axis):
         the packed tensor
     """
 
-    packed_tensor = array.pack()
+    packed_tensor = array.stack()
     shape = packed_tensor.get_shape()
     rank = len(shape)
 
