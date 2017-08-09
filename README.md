@@ -20,7 +20,7 @@ The model was trained and tested on a machine with:
   - 16GB RAM
   - No GPU
   - Ubuntu 14.04 LTS
-  - TensorFlow r0.12
+  - TensorFlow 1.1
   - Python 2.7
 
 ## Usage
@@ -46,3 +46,7 @@ I trained the model with a recurrent controller, a maximum sequence length of 10
 ![hamming](https://github.com/camigord/Neural-Turing-Machine/blob/master/assets/Hamming.png)
 
 ![loss](https://github.com/camigord/Neural-Turing-Machine/blob/master/assets/Loss.png)
+
+# Original project
+
+[https://github.com/camigord/Neural-Turing-Machine]
