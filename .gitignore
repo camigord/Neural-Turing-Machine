@@ -1,0 +1,4 @@
+*.pyc
+checkpoints/
+!checkpoints/step-100000
+logs/
