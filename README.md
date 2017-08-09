@@ -46,3 +46,7 @@ I trained the model with a recurrent controller, a maximum sequence length of 10
 ![hamming](https://github.com/camigord/Neural-Turing-Machine/blob/master/assets/Hamming.png)
 
 ![loss](https://github.com/camigord/Neural-Turing-Machine/blob/master/assets/Loss.png)
+
+# Original project
+
+[https://github.com/camigord/Neural-Turing-Machine]
