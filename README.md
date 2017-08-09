@@ -20,7 +20,7 @@ The model was trained and tested on a machine with:
   - 16GB RAM
   - No GPU
   - Ubuntu 14.04 LTS
-  - TensorFlow r0.12
+  - TensorFlow 1.1
   - Python 2.7
 
 ## Usage
