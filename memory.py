@@ -60,7 +60,7 @@ class Memory:
         normalized_memory = tf.nn.l2_normalize(memory_matrix, 2)
         normalized_keys = tf.nn.l2_normalize(keys, 1)
 
-        similiarity = tf.batch_matmul(normalized_memory, normalized_keys)
+        similiarity = tf.matmul(normalized_memory, normalized_keys)
         strengths = tf.expand_dims(strengths, 1)
 
         return tf.nn.softmax(similiarity * strengths, 1)
@@ -123,7 +123,7 @@ class Memory:
         # TODO: This circular convolution is more efficient than the commented code, but it was harcoded for a batch_size=1
         #       and for a shift_vector with 3 elements.
                    
-        gated_weighting = tf.concat(1, [tf.expand_dims(gated_weighting[:,-1,:], axis=-1), gated_weighting, tf.expand_dims(gated_weighting[:,0,:], axis=-1)])
+        gated_weighting = tf.concat([tf.expand_dims(gated_weighting[:,-1,:], axis=-1), gated_weighting, tf.expand_dims(gated_weighting[:,0,:], axis=-1)], 1)
 
         gated_weighting = tf.expand_dims(gated_weighting,0)
         shift_weighting = tf.expand_dims(shift_weighting,-1)
@@ -179,8 +179,8 @@ class Memory:
         add_vector = tf.expand_dims(add_vector, 1)
         erase_vector = tf.expand_dims(erase_vector, 1)
 
-        erasing = memory_matrix * (1 - tf.batch_matmul(write_weighting, erase_vector))
-        writing = tf.batch_matmul(write_weighting, add_vector)
+        erasing = memory_matrix * (1 - tf.matmul(write_weighting, erase_vector))
+        writing = tf.matmul(write_weighting, add_vector)
         updated_memory = erasing + writing
 
         return updated_memory
@@ -199,7 +199,7 @@ class Memory:
         Returns: Tensor (batch_size, word_size, read_heads)
         """
 
-        updated_read_vectors = tf.batch_matmul(memory_matrix, read_weightings, adj_x=True)
+        updated_read_vectors = tf.matmul(memory_matrix, read_weightings, adjoint_a=True)
 
         return updated_read_vectors
 
