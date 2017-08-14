@@ -11,8 +11,6 @@ _[Important Notes]:_
 
 2. In a similar way, the Hamming distance computation used in train.py for performance visualization is currently hard-coded for batch_sizes=1. Modifying this, however, should be much simpler...
 
-3. I experienced the typical problem of the gradients becoming _nan_ when training with a max_sequence_length of 20. I have not been able to find any robust solution to this problem, but the code seems to converge when trained with a sequence length of 10. Some have suggested to perform _curriculum learning_ to avoid this issue, but I currently have not tried this option.
-
 ## Local Environment Specifications
 
 The model was trained and tested on a machine with:
