@@ -152,7 +152,7 @@ class Memory:
         """
         sharp_gamma = tf.expand_dims(sharp_gamma,1)
         powed_conv_w = tf.pow(after_conv_shift, sharp_gamma)
-        return powed_conv_w / tf.expand_dims(tf.reduce_sum(powed_conv_w,1),1)
+        return powed_conv_w / ( tf.expand_dims(tf.reduce_sum(powed_conv_w,1),1) + 1e-10 )
 
     def update_memory(self, memory_matrix, write_weighting, add_vector, erase_vector):
         """
